@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# bw-stop: stop the running bandwidth monitor daemon.
+
+set -euo pipefail
+
+PIDFILE="/tmp/bw_monitor.pid"
+
+if [[ ! -f "${PIDFILE}" ]]; then
+    echo "bw_monitor does not appear to be running (no PID file found)." >&2
+    exit 1
+fi
+
+PID="$(cat "${PIDFILE}")"
+
+if ! kill -0 "${PID}" 2>/dev/null; then
+    echo "No process with PID ${PID} found. Removing stale PID file." >&2
+    rm -f "${PIDFILE}"
+    exit 1
+fi
+
+echo "Stopping bw_monitor (PID ${PID})..."
+kill -TERM "${PID}"
+
+# Wait up to 5 seconds for the process to exit
+for i in $(seq 1 50); do
+    if ! kill -0 "${PID}" 2>/dev/null; then
+        echo "bw_monitor stopped."
+        rm -f "${PIDFILE}"
+        exit 0
+    fi
+    sleep 0.1
+done
+
+echo "Process did not stop within 5s; sending SIGKILL." >&2
+kill -KILL "${PID}" 2>/dev/null || true
+rm -f "${PIDFILE}"

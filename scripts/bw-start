@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# bw-start: launch the bandwidth monitor daemon in the background.
+# The CSV output file is created in the current working directory.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BW_MONITOR="${SCRIPT_DIR}/bw_monitor"
+PIDFILE="/tmp/bw_monitor.pid"
+
+if [[ ! -x "${BW_MONITOR}" ]]; then
+    echo "Error: bw_monitor binary not found at ${BW_MONITOR}" >&2
+    echo "Run 'make' in the bw_tool directory first." >&2
+    exit 1
+fi
+
+if [[ -f "${PIDFILE}" ]]; then
+    PID="$(cat "${PIDFILE}")"
+    if kill -0 "${PID}" 2>/dev/null; then
+        echo "bw_monitor is already running (PID ${PID})." >&2
+        exit 1
+    else
+        rm -f "${PIDFILE}"
+    fi
+fi
+
+"${BW_MONITOR}" --start "$(pwd)"
+echo "bw_monitor started. Output CSV will be in: $(pwd)"
