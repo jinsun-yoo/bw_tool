@@ -72,6 +72,7 @@ int main(int argc, char* argv[]) {
 
     char csv_path[4096];
     build_csv_path(output_dir, csv_path, sizeof(csv_path));
+    printf("CSV path is %s\n", csv_path);
 
     daemonize();
     write_pidfile();
