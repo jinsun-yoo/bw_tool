@@ -49,13 +49,53 @@ static void write_pidfile() {
     fclose(f);
 }
 
-// Build CSV path: <output_dir>/bwmonitor-MMDD_HHMMSS.csv
+static bool in_mpi_context() {
+    // Detect common MPI launcher env vars across OpenMPI/PMI/PMIx stacks.
+    return getenv("OMPI_COMM_WORLD_RANK") != nullptr ||
+           getenv("PMI_RANK") != nullptr ||
+           getenv("PMIX_RANK") != nullptr ||
+           getenv("MPI_LOCALRANKID") != nullptr;
+}
+
+static bool get_local_hostname(char* out, size_t len) {
+    if (!out || len == 0) return false;
+    if (gethostname(out, len) != 0) return false;
+    out[len - 1] = '\0';
+    return out[0] != '\0';
+}
+
+// Build CSV path:
+// - <output_dir>/bwmonitor-<SLURM_JOB_ID>.csv (if SLURM_JOB_ID is set)
+// - <output_dir>/bwmonitor-MMDD_HHMMSS.csv (fallback)
+// If running under MPI context, append -<hostname> before .csv.
 static void build_csv_path(const char* output_dir, char* out, size_t len) {
+    const char* slurm_job_id = getenv("SLURM_JOB_ID");
+    const bool mpi = in_mpi_context();
+
+    char hostname[256] = {0};
+    const bool have_hostname = mpi && get_local_hostname(hostname, sizeof(hostname));
+
+    if (slurm_job_id && slurm_job_id[0] != '\0') {
+        if (have_hostname) {
+            snprintf(out, len, "%s/bwmonitor-%s-%s.csv", output_dir, slurm_job_id, hostname);
+        } else {
+            snprintf(out, len, "%s/bwmonitor-%s.csv", output_dir, slurm_job_id);
+        }
+        return;
+    }
+
     time_t now = time(nullptr);
     struct tm* tm = localtime(&now);
     char ts[32];
-    strftime(ts, sizeof(ts), "%m%d_%H%M%S", tm);
-    snprintf(out, len, "%s/bwmonitor-%s.csv", output_dir, ts);
+    if (!tm || strftime(ts, sizeof(ts), "%m%d_%H%M%S", tm) == 0) {
+        snprintf(ts, sizeof(ts), "unknown_time");
+    }
+
+    if (have_hostname) {
+        snprintf(out, len, "%s/bwmonitor-%s-%s.csv", output_dir, ts, hostname);
+    } else {
+        snprintf(out, len, "%s/bwmonitor-%s.csv", output_dir, ts);
+    }
 }
 
 static void print_usage(const char* prog) {
