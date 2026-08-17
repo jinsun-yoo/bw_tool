@@ -75,20 +75,20 @@ static void build_csv_path(const char* output_dir, char* out, size_t len) {
     char hostname[256] = {0};
     const bool have_hostname = mpi && get_local_hostname(hostname, sizeof(hostname));
 
-    if (slurm_job_id && slurm_job_id[0] != '\0') {
-        if (have_hostname) {
-            snprintf(out, len, "%s/bwmonitor-%s-%s.csv", output_dir, slurm_job_id, hostname);
-        } else {
-            snprintf(out, len, "%s/bwmonitor-%s.csv", output_dir, slurm_job_id);
-        }
-        return;
-    }
-
     time_t now = time(nullptr);
     struct tm* tm = localtime(&now);
     char ts[32];
     if (!tm || strftime(ts, sizeof(ts), "%m%d_%H%M%S", tm) == 0) {
         snprintf(ts, sizeof(ts), "unknown_time");
+    }
+
+    if (slurm_job_id && slurm_job_id[0] != '\0') {
+        if (have_hostname) {
+            snprintf(out, len, "%s/bwmonitor-%s-%s-%s.csv", output_dir, slurm_job_id, hostname, ts);
+        } else {
+            snprintf(out, len, "%s/bwmonitor-%s-%s.csv", output_dir, slurm_job_id, ts);
+        }
+        return;
     }
 
     if (have_hostname) {
