@@ -4,6 +4,7 @@
 #include <cstring>
 #include <ctime>
 #include <csignal>
+#include <sched.h>
 #include <thread>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -20,6 +21,32 @@ static void handle_sigterm(int) {
     g_stop.store(true, std::memory_order_relaxed);
 }
 
+// fork()/exec() inherit the caller's CPU affinity mask. If bw_monitor is
+// launched under a job launcher (e.g. `mpirun bw-start ...`) that pins its
+// child to a single core, the daemonized process -- including the sampler
+// thread's busy-spin loop in sampler.cpp -- stays confined to that same
+// core for its entire lifetime. That core is often the very one a
+// co-located compute rank (e.g. an NCCL proxy/progress thread) is bound to,
+// so the sampler thread steals cycles from it and skews measured bandwidth.
+// Reset the affinity mask to all online CPUs so the daemon (and its
+// threads) are free to be scheduled anywhere, regardless of how it was
+// launched.
+static void reset_cpu_affinity() {
+    long nprocs = sysconf(_SC_NPROCESSORS_ONLN);
+    if (nprocs <= 0) return;
+
+    cpu_set_t* set = CPU_ALLOC((size_t)nprocs);
+    if (!set) return;
+    size_t set_size = CPU_ALLOC_SIZE((size_t)nprocs);
+    CPU_ZERO_S(set_size, set);
+    for (long i = 0; i < nprocs; ++i) CPU_SET_S((size_t)i, set_size, set);
+
+    if (sched_setaffinity(0, set_size, set) != 0) {
+        perror("sched_setaffinity");
+    }
+    CPU_FREE(set);
+}
+
 // Double-fork daemonize. Returns in the grandchild (daemon) process.
 static void daemonize() {
     pid_t pid = fork();
@@ -31,6 +58,8 @@ static void daemonize() {
     pid = fork();
     if (pid < 0) { perror("fork2"); exit(1); }
     if (pid > 0) exit(0); // first child exits
+
+    reset_cpu_affinity();
 
     // Redirect stdin/stdout/stderr to /dev/null
     int devnull = open("/dev/null", O_RDWR);
