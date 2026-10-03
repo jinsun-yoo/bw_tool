@@ -14,4 +14,4 @@ struct Sample {
 // 4096 entries ≈ 4s of backlog at 1ms sampling rate
 using SampleBuffer = RingBuffer<Sample, 4096>;
 
-void sampler_thread(SampleBuffer* buf, std::atomic<bool>* stop);
+void sampler_thread(SampleBuffer* buf, std::atomic<bool>* stop, const char* device);

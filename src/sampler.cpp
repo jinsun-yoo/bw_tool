@@ -54,7 +54,14 @@ static uint64_t now_ns() {
 // ---------------------------------------------------------------------------
 // Sampler thread entry point.
 // ---------------------------------------------------------------------------
-void sampler_thread(SampleBuffer* buf, std::atomic<bool>* stop) {
+void sampler_thread(SampleBuffer* buf, std::atomic<bool>* stop, const char* device) {
+    char xmit_data_path[512], rcv_data_path[512], xmit_pkts_path[512], rcv_pkts_path[512];
+    const char* fmt = "/sys/class/infiniband/%s/ports/1/counters/%s";
+    snprintf(xmit_data_path, sizeof(xmit_data_path), fmt, device, "port_xmit_data");
+    snprintf(rcv_data_path,  sizeof(rcv_data_path),  fmt, device, "port_rcv_data");
+    snprintf(xmit_pkts_path, sizeof(xmit_pkts_path), fmt, device, "port_xmit_packets");
+    snprintf(rcv_pkts_path,  sizeof(rcv_pkts_path),  fmt, device, "port_rcv_packets");
+
     const double tsc_ghz = calibrate_tsc_ghz(); // ticks per ns
     const uint64_t interval_ticks = (uint64_t)(1'000'000.0 * tsc_ghz); // 1ms in ticks
 
@@ -69,10 +76,10 @@ void sampler_thread(SampleBuffer* buf, std::atomic<bool>* stop) {
 
         Sample s;
         s.timestamp_ns = now_ns();
-        s.xmit_data    = read_counter("/sys/class/infiniband/mlx5_0/ports/1/counters/port_xmit_data");
-        s.rcv_data     = read_counter("/sys/class/infiniband/mlx5_0/ports/1/counters/port_rcv_data");
-        s.xmit_pkts    = read_counter("/sys/class/infiniband/mlx5_0/ports/1/counters/port_xmit_packets");
-        s.rcv_pkts     = read_counter("/sys/class/infiniband/mlx5_0/ports/1/counters/port_rcv_packets");
+        s.xmit_data    = read_counter(xmit_data_path);
+        s.rcv_data     = read_counter(rcv_data_path);
+        s.xmit_pkts    = read_counter(xmit_pkts_path);
+        s.rcv_pkts     = read_counter(rcv_pkts_path);
         buf->push(s); // non-blocking; silently drops if writer is too slow
     }
 }
