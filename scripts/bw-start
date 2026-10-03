@@ -2,17 +2,61 @@
 # bw-start: launch the bandwidth monitor daemon in the background.
 # The CSV output file is created in the current working directory by
 # default, or in the directory given as the first argument.
+#
+# Usage: bw-start [output_dir] [-d|--device <ib_device>]
+#   --device selects the InfiniBand device to sample (default: mlx5_0).
+#   When given, the device name is appended to the output CSV file name and
+#   a per-device PID file is used so several NICs can be monitored at once.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BW_MONITOR="${SCRIPT_DIR}/bw_monitor"
-PIDFILE="/tmp/bw_monitor.pid"
-OUTPUT_DIR="${1:-$(pwd)}"
+
+OUTPUT_DIR=""
+DEVICE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -d|--device)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: $1 requires a device name." >&2
+                exit 1
+            fi
+            DEVICE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: bw-start [output_dir] [-d|--device <ib_device>]"
+            exit 0
+            ;;
+        *)
+            if [[ -n "${OUTPUT_DIR}" ]]; then
+                echo "Error: unexpected argument '$1'." >&2
+                exit 1
+            fi
+            OUTPUT_DIR="$1"
+            shift
+            ;;
+    esac
+done
+
+OUTPUT_DIR="${OUTPUT_DIR:-$(pwd)}"
+
+if [[ -n "${DEVICE}" ]]; then
+    PIDFILE="/tmp/bw_monitor-${DEVICE}.pid"
+else
+    PIDFILE="/tmp/bw_monitor.pid"
+fi
 
 if [[ ! -x "${BW_MONITOR}" ]]; then
     echo "Error: bw_monitor binary not found at ${BW_MONITOR}" >&2
     echo "Run 'make' in the bw_tool directory first." >&2
+    exit 1
+fi
+
+if [[ -n "${DEVICE}" && ! -d "/sys/class/infiniband/${DEVICE}" ]]; then
+    echo "Error: IB device '${DEVICE}' not found under /sys/class/infiniband." >&2
     exit 1
 fi
 
@@ -29,5 +73,10 @@ fi
 mkdir -p "${OUTPUT_DIR}"
 OUTPUT_DIR="$(cd "${OUTPUT_DIR}" && pwd)"
 
-"${BW_MONITOR}" --start "${OUTPUT_DIR}"
-echo "bw_monitor started. Output CSV will be in: ${OUTPUT_DIR}"
+if [[ -n "${DEVICE}" ]]; then
+    "${BW_MONITOR}" --start "${OUTPUT_DIR}" --device "${DEVICE}"
+    echo "bw_monitor started on ${DEVICE}. Output CSV will be in: ${OUTPUT_DIR}"
+else
+    "${BW_MONITOR}" --start "${OUTPUT_DIR}"
+    echo "bw_monitor started. Output CSV will be in: ${OUTPUT_DIR}"
+fi

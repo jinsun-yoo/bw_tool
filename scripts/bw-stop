@@ -1,9 +1,39 @@
 #!/usr/bin/env bash
 # bw-stop: stop the running bandwidth monitor daemon.
+#
+# Usage: bw-stop [-d|--device <ib_device>]
+#   --device stops the daemon started with the matching bw-start --device.
 
 set -euo pipefail
 
-PIDFILE="/tmp/bw_monitor.pid"
+DEVICE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -d|--device)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: $1 requires a device name." >&2
+                exit 1
+            fi
+            DEVICE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: bw-stop [-d|--device <ib_device>]"
+            exit 0
+            ;;
+        *)
+            echo "Error: unexpected argument '$1'." >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -n "${DEVICE}" ]]; then
+    PIDFILE="/tmp/bw_monitor-${DEVICE}.pid"
+else
+    PIDFILE="/tmp/bw_monitor.pid"
+fi
 
 if [[ ! -f "${PIDFILE}" ]]; then
     echo "bw_monitor does not appear to be running (no PID file found)." >&2
